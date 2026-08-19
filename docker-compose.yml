@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: project_evidence
+      POSTGRES_USER: project_evidence
+      POSTGRES_PASSWORD: project_evidence
+    ports:
+      - "54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U project_evidence -d project_evidence"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - project_evidence_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://project_evidence:project_evidence@postgres:5432/project_evidence
+      CHECKPOINT_DATABASE_URL: postgresql://project_evidence:project_evidence@postgres:5432/project_evidence?sslmode=disable
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      MAX_RETRIES_PER_STAGE: ${MAX_RETRIES_PER_STAGE:-1}
+      MAX_LLM_CALLS_PER_RUN: ${MAX_LLM_CALLS_PER_RUN:-16}
+      MAX_RUN_COST_USD: ${MAX_RUN_COST_USD:-0.25}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-64}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini-2024-07-18}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MAX_RETRIES: ${OPENAI_MAX_RETRIES:-2}
+      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-60}
+      OPENAI_INPUT_COST_PER_MILLION: ${OPENAI_INPUT_COST_PER_MILLION:-0.15}
+      OPENAI_OUTPUT_COST_PER_MILLION: ${OPENAI_OUTPUT_COST_PER_MILLION:-0.60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  project_evidence_pgdata:
